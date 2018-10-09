@@ -171,4 +171,4 @@ fig.savefig(os.path.join(args.outdir, "chain_{}.pdf".format(j)), bbox='tight', r
 plt.close('all')
 
 ### print out elapsed time
-print("\n Total time: " + str(int((time.time() - start) / 60) + " min"))
+print("\n Total time: " + str(int((time.time() - start) / 60)) + " min")
