@@ -1,4 +1,4 @@
-""" Code for fitting two Gaussians (i.e., a binary pair) to ALMA continuum visibilities using GALARIO """
+""" Code for fitting Gaussians to ALMA continuum visibilities using GALARIO """
 
 # ======================== Import Packages ==========================
 
@@ -13,21 +13,19 @@ import matplotlib.pyplot as plt
 from emcee import EnsembleSampler
 import corner
 from galario import arcsec, deg
-import galario.double as g_double
+import galario.double_cuda as g_double
 import time
 
 
 # ====================== Parse Arguments ==================
 
 ### example command-line input
-# python galario_binary.py 'input/uvtable.txt' 1.33e-3 10.0 0.06 30.0 140.0 -0.20 -0.76 10.0 0.05 40.0 150.0 1.17 -0.31 5000 40 --outdir 'output'
+# python galario_binary.py 'input/uvtable_203936815.txt' 1.33e-3 10.0 0.06 30.0 140.0 -0.20 -0.76 10.0 0.05 40.0 150.0 1.17 -0.31 10000 40 --outdir 'output'
 
-### input parameters
 parser = argparse.ArgumentParser()
 parser.add_argument("uvtable", help="name of UV table to fit")
 parser.add_argument("wavelength", help="wavelength of data [m]", type=float)
 
-### primary star parameters
 parser.add_argument("f0_a", help="flux normalization [mJy]", type=float)
 parser.add_argument("sigma_a", help="FWHM of the gaussian [arcsec]", type=float)
 parser.add_argument("incl_a", help="inclination [deg]", type=float)
@@ -35,7 +33,6 @@ parser.add_argument("pa_a", help="position angle [deg]", type=float)
 parser.add_argument("dra_a", help="right ascension offset [arcsec]", type=float)
 parser.add_argument("ddec_a", help="declination offset [arcsec]", type=float)
 
-### secondary star parameters
 parser.add_argument("f0_b", help="flux normalization [mJy]", type=float)
 parser.add_argument("sigma_b", help="FWHM of the gaussian [arcsec]", type=float)
 parser.add_argument("incl_b", help="inclination [deg]", type=float)
@@ -43,7 +40,6 @@ parser.add_argument("pa_b", help="position angle [deg]", type=float)
 parser.add_argument("dra_b", help="right ascension offset [arcsec]", type=float)
 parser.add_argument("ddec_b", help="declination offset [arcsec]", type=float)
 
-### emcee parameters
 parser.add_argument("nsteps", help="number of steps to run mcmc", type=int)
 parser.add_argument("nthreads", help="number of emcee threads to use", type=int)
 parser.add_argument("--outdir", help="output directory; otherwise outputs to current directory")
@@ -130,17 +126,17 @@ V /= args.wavelength
 ### get image dimensions
 print("\nImage size: ")
 Nxy, Dxy = g_double.get_image_size(U, V, verbose=True, f_max=2.1, f_min=2.0)
-Rmin, dR, nR = 1e-4 * arcsec, 0.01 * arcsec, 2000
+Rmin, dR, nR = 1e-4 * arcsec, 0.001 * arcsec, 20000
 
 ### get initial guesses and ranges of gaussian fit parameters
 p0 = [args.f0_a, args.sigma_a, args.incl_a, args.pa_a, args.dra_a, args.ddec_a, args.f0_b, args.sigma_b, args.incl_b, args.pa_b, args.dra_b, args.ddec_b]
-p_ranges = [[0.1, 100.], [0.01, 5.], [0., 90.], [0., 180.], [-2., 2.], [-2., 2.], [0.1, 100.], [0.01, 5.], [0., 90.], [0., 180.], [-2., 2.], [-2., 2.]]
+p_ranges = [[0.1, 100.0], [0.01, 5.0], [-90., 90.], [-180, 180], [-2.0, 2.0], [-5.0, 5.0], [0.1, 100.0], [0.01, 5.0], [-90., 90.], [-180, 180], [-2.0, 2.0], [-2.0, 2.0]]
 
 
 ### setup mcmc
 ndim = len(p0)
-nwalkers = ndim * 10
-nsteps = int(args.nsteps / 10)
+nwalkers = ndim * 15
+nsteps = int(args.nsteps / 5)
 tsteps = args.nsteps
 nthreads = args.nthreads
 print("\nEmcee setup:")
