@@ -13,14 +13,14 @@ import matplotlib.pyplot as plt
 from emcee import EnsembleSampler
 import corner
 from galario import arcsec, deg
-import galario.double as g_double
+import galario.double_cuda as g_double
 import time
 
 
 # ====================== Parse Arguments ==================
 
 ### example command-line input
-# python galario_gaussian.py 'input/uvtable.txt' 1.33e-3 10.0 0.10 70.0 40.0 -0.1 -0.6 2000 50 --outdir "output"
+# python galario_gaussian.py 'EPIC_204211116/uvtable_EPIC204211116.txt' 1.33e-3 10.0 0.10 70.0 40.0 -0.1 -0.6 2000 50 --outdir "output"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("uvtable", help="name of UV table to fit")
@@ -34,8 +34,8 @@ parser.add_argument("ddec", help="declination offset [arcsec]", type=float)
 parser.add_argument("nsteps", help="number of steps to run mcmc", type=int)
 parser.add_argument("nthreads", help="number of emcee threads to use", type=int)
 parser.add_argument("--outdir", help="output directory; otherwise outputs to current directory")
-parser.add_argument("--restart", help="use if restarting from existing snapshops; input filename of snapshot")
-parser.add_argument("--r_in", help="inner radius, if disk has inner cavity [arcsec]", type=float)
+parser.add_argument("--restart", help="restart from existing snapshops; input filename of snapshot")
+parser.add_argument("--r_in", help="additional parameter for inner cavity [au]", type=float)
 args = parser.parse_args()
 
 
@@ -119,20 +119,20 @@ V /= args.wavelength
 ### get image dimensions
 print("\nImage size: ")
 Nxy, Dxy = g_double.get_image_size(U, V, verbose=True, f_max=2.1, f_min=2.0)
-Rmin, dR, nR = 1e-4 * arcsec, 0.01 * arcsec, 2000
+Rmin, dR, nR = 1e-4 * arcsec, 0.001 * arcsec, 20000
 
 ### get initial guesses and ranges of gaussian fit parameters
 if args.r_in:
     p0 = [args.f0, args.sigma, args.r_in, args.incl, args.pa, args.dra, args.ddec]
-    p_ranges = [[0.1, 100.], [0.01, 5.], [0.01, 5.], [0., 90.], [0., 180.], [-2., 2.], [-2., 2.]]
+    p_ranges = [[0.1, 100.0], [0.01, 5.0], [0.01, 5.0], [0., 90.], [0, 180], [-2.0, 2.0], [-2.0, 2.0]]
 else:
     p0 = [args.f0, args.sigma, args.incl, args.pa, args.dra, args.ddec]
-    p_ranges = [[0.1, 100.], [0.01, 5.], [0., 90.], [0., 180.], [-2., 2.], [-2., 2.]]
+    p_ranges = [[0.1, 100.0], [0.01, 5.0], [-90., 90.], [-180, 180], [-2.0, 2.0], [-2.0, 2.0]]
 
 ### setup mcmc
 ndim = len(p0)
 nwalkers = ndim * 10
-nsteps = int(args.nsteps / 10)
+nsteps = int(args.nsteps / 5)
 tsteps = args.nsteps
 nthreads = args.nthreads
 print("\nEmcee setup:")
@@ -156,9 +156,9 @@ else:
 
 ### set labels for plotting
 if args.r_in:
-    labels = [r"$f_0$", r"$\sigma$", r"$r_{in}$", r"incl", r"PA", r"$\Delta$RA", r"$\Delta$Dec"]
+    labels = [r"$f_0$", r"$\sigma$", r"$r_{min}$", r"$incl$", r"PA", r"$\Delta$RA", r"$\Delta$Dec"]
 else:
-    labels = [r"$f_0$", r"$\sigma$", r"incl", r"PA", r"$\Delta$RA", r"$\Delta$Dec"]
+    labels = [r"$f_0$", r"$\sigma$", r"$incl$", r"PA", r"$\Delta$RA", r"$\Delta$Dec"]
 
 ### do mcmc fit
 print("\nStarting fit...\n")
@@ -179,9 +179,8 @@ for j in range(nsteps, tsteps + 1, nsteps):
     np.save(os.path.join(outdir, "chain_{}".format(j)), sampler.chain)
     print("{0} steps completed: chain saved in chain_{0}.npy - corner plot saved in triangle_{0}".format(j))
 
-### save and plot final chains
-np.save(os.path.join(outdir, "chain_{}".format(args.nsteps)), sampler.chain)
-samples_final = np.load(os.path.join(outdir, "chain_{}.npy".format(args.nsteps)))
+### plot final chains
+samples_final = np.load(os.path.join(outdir, "chain_{}.npy".format(j)))
 fig, axes = plt.subplots(len(labels), 1, figsize=(9, len(labels) * 2 + 1))
 for walker in samples_final:
     for i, (ax, lab) in enumerate(zip(axes, labels)):
