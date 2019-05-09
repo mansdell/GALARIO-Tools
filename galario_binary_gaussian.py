@@ -1,4 +1,8 @@
-""" Code for fitting Gaussians to ALMA continuum visibilities using GALARIO """
+""" 
+Code for fitting two Gaussians (i.e., a binary disk system) to ALMA continuum visibilities using GALARIO 
+Used in Ansdell et al. 2019 (Dipper Disc Inclinations, in prep)
+"""
+
 
 # ======================== Import Packages ==========================
 
@@ -20,12 +24,14 @@ import time
 # ====================== Parse Arguments ==================
 
 ### example command-line input
-# python galario_binary.py 'input/uvtable_203936815.txt' 1.33e-3 10.0 0.06 30.0 140.0 -0.20 -0.76 10.0 0.05 40.0 150.0 1.17 -0.31 10000 40 --outdir 'output'
+# python galario_binary.py 'input/uvtable_EPIC_203770559.txt' 1.33e-3 10.0 0.2 27.0 11.0 0.48 -0.66 10.0 0.1 29.0 -84.0 -0.99 -0.87 10000 10 --outdir 'output'
 
+### input parameters
 parser = argparse.ArgumentParser()
 parser.add_argument("uvtable", help="name of UV table to fit")
 parser.add_argument("wavelength", help="wavelength of data [m]", type=float)
 
+### primary star parameters
 parser.add_argument("f0_a", help="flux normalization [mJy]", type=float)
 parser.add_argument("sigma_a", help="FWHM of the gaussian [arcsec]", type=float)
 parser.add_argument("incl_a", help="inclination [deg]", type=float)
@@ -33,6 +39,7 @@ parser.add_argument("pa_a", help="position angle [deg]", type=float)
 parser.add_argument("dra_a", help="right ascension offset [arcsec]", type=float)
 parser.add_argument("ddec_a", help="declination offset [arcsec]", type=float)
 
+### secondary star parameters
 parser.add_argument("f0_b", help="flux normalization [mJy]", type=float)
 parser.add_argument("sigma_b", help="FWHM of the gaussian [arcsec]", type=float)
 parser.add_argument("incl_b", help="inclination [deg]", type=float)
@@ -40,6 +47,7 @@ parser.add_argument("pa_b", help="position angle [deg]", type=float)
 parser.add_argument("dra_b", help="right ascension offset [arcsec]", type=float)
 parser.add_argument("ddec_b", help="declination offset [arcsec]", type=float)
 
+### emcee parameters
 parser.add_argument("nsteps", help="number of steps to run mcmc", type=int)
 parser.add_argument("nthreads", help="number of emcee threads to use", type=int)
 parser.add_argument("--outdir", help="output directory; otherwise outputs to current directory")
@@ -92,12 +100,15 @@ def lnpostfn(p, p_ranges, rmin, dr, nr, nxy, dxy, u, v, re, im, w):
     f_a = GaussianProfile(f0_a, sigma_a, rmin, dr, nr)
     f_b = GaussianProfile(f0_b, sigma_b, rmin, dr, nr)
 
-    ### calculate chi-squared
-    chi2_a = g_double.chi2Profile(f_a, rmin, dr, nxy, dxy, u, v, re, im, w, inc=inc_a, PA=pa_a, dRA=dra_a, dDec=ddec_a)
-    chi2_b = g_double.chi2Profile(f_b, rmin, dr, nxy, dxy, u, v, re, im, w, inc=inc_b, PA=pa_b, dRA=dra_b, dDec=ddec_b)
+    ### calculate the visibilities of the two gaussians
+    Vmod_a = g_double.sampleProfile(f_a, rmin, dr, nxy, dxy, u, v, inc=inc_a, PA=pa_a, dRA=dra_a, dDec=ddec_a)   
+    Vmod_b = g_double.sampleProfile(f_b, rmin, dr, nxy, dxy, u, v, inc=inc_b, PA=pa_b, dRA=dra_b, dDec=ddec_b)
+
+    ### calculate the chi2 using the sum of the visibilities
+    chi2 = g_double.reduce_chi2(re, im, w, Vmod_a + Vmod_b)
 
     ### return likelihood
-    return (-0.5 * chi2_a) + (-0.5 * chi2_b) + lnprior
+    return -0.5 * chi2 + lnprior
 
 
 def GaussianProfile(f0, sigma, rmin, dr, nr):
@@ -130,13 +141,12 @@ Rmin, dR, nR = 1e-4 * arcsec, 0.001 * arcsec, 20000
 
 ### get initial guesses and ranges of gaussian fit parameters
 p0 = [args.f0_a, args.sigma_a, args.incl_a, args.pa_a, args.dra_a, args.ddec_a, args.f0_b, args.sigma_b, args.incl_b, args.pa_b, args.dra_b, args.ddec_b]
-p_ranges = [[0.1, 100.0], [0.01, 5.0], [-90., 90.], [-180, 180], [-2.0, 2.0], [-5.0, 5.0], [0.1, 100.0], [0.01, 5.0], [-90., 90.], [-180, 180], [-2.0, 2.0], [-2.0, 2.0]]
-
+p_ranges = [[0.1, 100.], [0.01, 5.], [0., 90.], [-180., 180.], [-2., 2.], [-2., 2.], [0.1, 100.], [0.01, 5.], [0., 90.], [-180., 180.], [-2., 2.], [-2., 2.]]
 
 ### setup mcmc
 ndim = len(p0)
-nwalkers = ndim * 15
-nsteps = int(args.nsteps / 5)
+nwalkers = ndim * 20
+nsteps = int(args.nsteps / 10)
 tsteps = args.nsteps
 nthreads = args.nthreads
 print("\nEmcee setup:")
