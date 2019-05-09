@@ -1,4 +1,7 @@
-""" Code for fitting Gaussians to ALMA continuum visibilities using GALARIO """
+""" 
+Code for fitting Gaussians to ALMA continuum visibilities using GALARIO 
+Used in Ansdell et al. 2019 (Dipper Disc Inclinations, in prep)
+"""
 
 # ======================== Import Packages ==========================
 
@@ -20,22 +23,22 @@ import time
 # ====================== Parse Arguments ==================
 
 ### example command-line input
-# python galario_gaussian.py 'EPIC_204211116/uvtable_EPIC204211116.txt' 1.33e-3 10.0 0.10 70.0 40.0 -0.1 -0.6 2000 50 --outdir "output"
+# python galario_gaussian.py 'input/uvtable_EPIC_203843911.txt' 1.33e-3 10.0 1.0 66.0 70.0 -0.03 -0.50 5000 12 --outdir "output"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("uvtable", help="name of UV table to fit")
-parser.add_argument("wavelength", help="wavelength of data [m]", type=float)
-parser.add_argument("f0", help="flux normalization [mJy]", type=float)
-parser.add_argument("sigma", help="FWHM of the gaussian [arcsec]", type=float)
-parser.add_argument("incl", help="inclination [deg]", type=float)
-parser.add_argument("pa", help="position angle [deg]", type=float)
-parser.add_argument("dra", help="right ascension offset [arcsec]", type=float)
-parser.add_argument("ddec", help="declination offset [arcsec]", type=float)
-parser.add_argument("nsteps", help="number of steps to run mcmc", type=int)
-parser.add_argument("nthreads", help="number of emcee threads to use", type=int)
-parser.add_argument("--outdir", help="output directory; otherwise outputs to current directory")
-parser.add_argument("--restart", help="restart from existing snapshops; input filename of snapshot")
-parser.add_argument("--r_in", help="additional parameter for inner cavity [au]", type=float)
+parser.add_argument("uvtable",     help="name of UV table to fit")
+parser.add_argument("wavelength",  help="wavelength of data [m]",            type=float)
+parser.add_argument("f0",          help="flux normalization [mJy]",          type=float)
+parser.add_argument("sigma",       help="FWHM of the gaussian [arcsec]",     type=float)
+parser.add_argument("incl",        help="inclination [deg]",                 type=float)
+parser.add_argument("pa",          help="position angle [deg]",              type=float)
+parser.add_argument("dra",         help="RA offset [arcsec]",                type=float)
+parser.add_argument("ddec",        help="dec offset [arcsec]",               type=float)
+parser.add_argument("nsteps",      help="number of steps to run mcmc",       type=int  )
+parser.add_argument("nthreads",    help="number of emcee threads to use",    type=int  )
+parser.add_argument("--outdir",    help="output dir; default to current dir"           )
+parser.add_argument("--restart",   help="input of snapshot to restart from "           )
+parser.add_argument("--r_in",      help="radius of inner cavity [au]",       type=float)
 args = parser.parse_args()
 
 
@@ -81,7 +84,7 @@ def lnpostfn(p, p_ranges, rmin, dr, nr, nxy, dxy, u, v, re, im, w):
     ### get gaussian profile
     f, r = GaussianProfile(f0, sigma, rmin, dr, nr)
 
-    ### add inner hole?
+    ### add inner cavity?
     if args.r_in:
         f[r < r_in] *= 0
 
@@ -109,7 +112,7 @@ def GaussianProfile(f0, sigma, rmin, dr, nr):
 
 # ========================== Code ==========================
 
-### read in visibilities
+### read in UV table visibilities
 print("\nReading in UV table: " + args.uvtable)
 U, V, Re, Im, W = np.loadtxt(args.uvtable, unpack=True)
 U, V = np.ascontiguousarray(U), np.ascontiguousarray(V)
@@ -119,19 +122,19 @@ V /= args.wavelength
 ### get image dimensions
 print("\nImage size: ")
 Nxy, Dxy = g_double.get_image_size(U, V, verbose=True, f_max=2.1, f_min=2.0)
-Rmin, dR, nR = 1e-4 * arcsec, 0.001 * arcsec, 20000
+Rmin, dR, nR = 1e-4 * arcsec, 0.0005 * arcsec, 20000
 
 ### get initial guesses and ranges of gaussian fit parameters
 if args.r_in:
     p0 = [args.f0, args.sigma, args.r_in, args.incl, args.pa, args.dra, args.ddec]
-    p_ranges = [[0.1, 100.0], [0.01, 5.0], [0.01, 5.0], [0., 90.], [0, 180], [-2.0, 2.0], [-2.0, 2.0]]
+    p_ranges = [[0.1, 100.0], [0.01, 5.0], [0.01, 5.0], [0., 90.], [0., 180.], [-2.0, 2.0], [-2.0, 2.0]]
 else:
     p0 = [args.f0, args.sigma, args.incl, args.pa, args.dra, args.ddec]
-    p_ranges = [[0.1, 100.0], [0.01, 5.0], [-90., 90.], [-180, 180], [-2.0, 2.0], [-2.0, 2.0]]
+    p_ranges = [[1.0, 50.0], [0.01, 5.0], [0., 90.], [0., 180.], [-2.5, 2.5], [-2.5, 2.5]]
 
 ### setup mcmc
 ndim = len(p0)
-nwalkers = ndim * 10
+nwalkers = ndim * 20 
 nsteps = int(args.nsteps / 5)
 tsteps = args.nsteps
 nthreads = args.nthreads
